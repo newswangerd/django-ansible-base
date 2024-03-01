@@ -13,13 +13,23 @@ logger = logging.getLogger('ansible_base.serializers')
 def get_resource_detail_view(resource: Resource):
     # TODO: format this so that it uses the correct API base path for the proxy.
     actions = resource.content_type.resource_type.get_resource_config().actions
+    resource_pk_field = resource.content_type.resource_type.get_resource_config().model._meta.pk.name
 
     # TODO: this needs some more logic to handle cases where the detail view isn't
     # name or pk, and in cases where there may be multiple detail views (such as with
     # nested API views). This may be solvable by providing a reverse_url_name when
     # resources are registered.
-    if detail := actions.get("retrieve"):
-        return detail[0][1].format(pk=resource.object_id, name=resource.name)
+    try:
+        # Make a best effort attempt to generate this without breaking the APIs
+        # This can break if a model has multiple detail views such as
+        # "/api/gateway/v1/environments/{pk}/organizations/{organizations}/".
+        # We'll try whatever the shortest url is and hope for the best.
+        if detail := actions.get("retrieve"):
+            paths = [i[1] for i in detail]
+            path = sorted(paths, key=len)[0]
+            return path.format(**{"pk": resource.object_id, "name": resource.name, resource_pk_field: resource.object_id})
+    except KeyError:
+        pass
 
     return None
 
