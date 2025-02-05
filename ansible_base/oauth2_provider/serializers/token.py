@@ -15,7 +15,7 @@ from ansible_base.lib.serializers.common import CommonModelSerializer
 from ansible_base.lib.utils.encryption import ENCRYPTED_STRING
 from ansible_base.lib.utils.settings import get_setting
 from ansible_base.oauth2_provider.models import OAuth2AccessToken, OAuth2RefreshToken
-from ansible_base.oauth2_provider.models.access_token import SCOPES
+from oauth2_provider.scopes import get_scopes_backend
 
 logger = logging.getLogger("ansible_base.oauth2_provider.serializers.token")
 
@@ -71,13 +71,13 @@ class OAuth2TokenSerializer(CommonModelSerializer):
         for word in words:
             if words.count(word) > 1:
                 return False  # do not allow duplicates
-            if word not in SCOPES:
+            if word not in get_scopes_backend().get_available_scopes():
                 return False
         return True
 
     def validate_scope(self, value):
         if not self._is_valid_scope(value):
-            raise ValidationError(_('Must be a simple space-separated string with allowed scopes {}.').format(SCOPES))
+            raise ValidationError(_('Must be a simple space-separated string with allowed scopes {}.').format(get_scopes_backend().get_available_scopes()))
         return value
 
     def create(self, validated_data):

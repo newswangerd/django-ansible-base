@@ -14,7 +14,7 @@ from ansible_base.lib.utils.models import prevent_search
 from ansible_base.lib.utils.settings import get_setting
 from ansible_base.oauth2_provider.utils import is_external_account
 
-SCOPES = ['read', 'write']
+from oauth2_provider.scopes import get_scopes_backend
 
 
 def validate_scope(value):
@@ -22,7 +22,7 @@ def validate_scope(value):
     if not given_scopes:
         raise ValidationError(_('Scope must be a simple space-separated string with allowed scopes: %(scopes)s') % {'scopes': ', '.join(SCOPES)})
     for scope in given_scopes:
-        if scope not in SCOPES:
+        if scope not in get_scopes_backend().get_available_scopes():
             raise ValidationError(_('Invalid scope: %(scope)s. Must be one of: %(scopes)s') % {'scope': scope, 'scopes': ', '.join(SCOPES)})
 
 
@@ -64,7 +64,7 @@ class OAuth2AccessToken(CommonModel, oauth2_models.AbstractAccessToken, activity
     last_used = models.DateTimeField(null=True, default=None, editable=False, help_text=_('A timestamp of when this token was last used.'))
     scope = models.CharField(
         default='write',
-        max_length=32,
+        max_length=256,
         help_text=_("Allowed scopes, further restricts user permissions. Must be a simple space-separated string with allowed scopes ['read', 'write']."),
         validators=[validate_scope],
     )
