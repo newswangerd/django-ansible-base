@@ -121,8 +121,7 @@ def delete_resource(resource: Resource):
     It is up to the caller to wrap it on a database transaction.
     """
     try:
-        resource.content_object.delete()
-        return resource.delete()
+        return resource.delete_resource()
     except DatabaseError as exc:  # pragma: no cover
         raise ResourceDeletionError() from exc
 
@@ -230,7 +229,6 @@ class SyncExecutor:
     resource_type_names: list[str] | None = None
     retries: int = 0
     retrysleep: int = 30
-    retain_seconds: int = 120
     stdout: TextIOBase | None = None
     unavailable: set = field(default_factory=set)
     attempts: int = 0
@@ -317,9 +315,6 @@ class SyncExecutor:
         if self.deleted_count:
             self.write(f"Deleting {self.deleted_count} orphaned resources")
             for orphan in resources_to_cleanup:
-                # If it was created in the latest X seconds, ignore it.
-                if orphan.content_object.created >= timezone.now() - timedelta(seconds=self.retain_seconds):
-                    continue
                 try:
                     _sc = orphan.content_type.resource_type.serializer_class
                     data = _sc(orphan.content_object).data
