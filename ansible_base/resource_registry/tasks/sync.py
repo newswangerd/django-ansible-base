@@ -5,7 +5,6 @@ import csv
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import timedelta
 from enum import Enum
 from io import StringIO, TextIOBase
 
@@ -14,10 +13,10 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
 from django.db.utils import DatabaseError, IntegrityError
-from django.utils import timezone
 from requests import HTTPError
 
 from ansible_base.resource_registry.models import Resource, ResourceType
+from ansible_base.resource_registry.models.service_identifier import service_id
 from ansible_base.resource_registry.registry import get_registry
 from ansible_base.resource_registry.rest_client import ResourceAPIClient, get_resource_server_client
 
@@ -46,7 +45,6 @@ class SyncStatus(str, Enum):
 class ManifestItem:
     ansible_id: str
     resource_hash: str
-    service_id: str | None = None
     resource_data: dict | None = None
 
     def __hash__(self):
@@ -89,9 +87,8 @@ def fetch_manifest(
 
     resp_metadata = api_client.get_service_metadata()
     resp_metadata.raise_for_status()
-    service_id = resp_metadata.json()["service_id"]
 
-    manifest_stream = api_client.get_resource_type_manifest(resource_type_name)
+    manifest_stream = api_client.get_resource_type_manifest(resource_type_name, filters={"service_id": str(service_id())})
     if manifest_stream.status_code == 404:
         msg = f"manifest for {resource_type_name} NOT FOUND."
         raise ManifestNotFound(msg)
@@ -102,7 +99,7 @@ def fetch_manifest(
         raise ResourceSyncHTTPError() from exc
 
     csv_reader = csv.DictReader(StringIO(manifest_stream.text))
-    return [ManifestItem(service_id=service_id, **row) for row in csv_reader]
+    return [ManifestItem(**row) for row in csv_reader]
 
 
 def get_orphan_resources(
@@ -111,9 +108,10 @@ def get_orphan_resources(
 ) -> QuerySet:
     """QuerySet with orphaned managed resources to be deleted."""
     return Resource.objects.filter(
-        service_id=manifest_list[0].service_id,
         content_type__resource_type__name=resource_type_name,
-    ).exclude(ansible_id__in=[item.ansible_id for item in manifest_list])
+    ).exclude(
+        ansible_id__in=[item.ansible_id for item in manifest_list]
+    )
 
 
 def delete_resource(resource: Resource):
@@ -130,7 +128,6 @@ def get_managed_resource(manifest_item: ManifestItem) -> Resource | None:
     """Return an instance containing the local managed resource to process."""
     return Resource.objects.filter(
         ansible_id=manifest_item.ansible_id,
-        service_id=manifest_item.service_id,
     ).first()
 
 
@@ -165,12 +162,14 @@ def resource_sync(
     local_managed_resource = get_managed_resource(manifest_item)
     resource_data = None
     resource_type_name = None
+    resource_service_id = None
     unavailable = False  # for retry mechanism
 
     def set_resource_local_variables():
         """Inner caching function to avoid making unnecessary requests."""
         nonlocal resource_data
         nonlocal resource_type_name
+        nonlocal resource_service_id
         nonlocal unavailable
         if resource_data is None or resource_type_name is None:
             resp = api_client.get_resource(manifest_item.ansible_id)
@@ -180,6 +179,7 @@ def resource_sync(
             resp.raise_for_status()
             resource_data = resp.json()["resource_data"]
             resource_type_name = resp.json()["resource_type"]
+            resource_service_id = resp.json()["service_id"]
 
     if local_managed_resource:
         # Exists locally: Compare and Update
@@ -196,6 +196,7 @@ def resource_sync(
             manifest_item,
             local_managed_resource,
             resource_data,
+            service_id=resource_service_id,
         )
     else:
         # New: Create it locally
@@ -209,7 +210,7 @@ def resource_sync(
                 resource_type=resource_type,
                 resource_data=resource_data,
                 ansible_id=manifest_item.ansible_id,
-                service_id=manifest_item.service_id,
+                service_id=resource_service_id,
             )
         except IntegrityError:
             return SyncResult(SyncStatus.CONFLICT, manifest_item)
@@ -315,6 +316,10 @@ class SyncExecutor:
         if self.deleted_count:
             self.write(f"Deleting {self.deleted_count} orphaned resources")
             for orphan in resources_to_cleanup:
+                # Skip items that owned by this service, but are partially migrated
+                if orphan.service_id == service_id() and orphan.is_partially_migrated == True:
+                    # TODO: how do I log skip?
+                    continue
                 try:
                     _sc = orphan.content_type.resource_type.serializer_class
                     data = _sc(orphan.content_object).data
