@@ -105,13 +105,10 @@ class JWTCommonAuth:
         is_cached, user_defaults = self.cache.check_user_in_cache(self.token)
 
         self.user = None
-        if is_cached:
-            try:
-                self.user = get_user_by_ansible_id(self.token['sub'])
-            except ObjectDoesNotExist:
-                # ooofff... I'm sorry, you user was in the cache but deleted from the database?
-                # but now you have to pay the price to continue logging in
-                pass
+        try:
+            self.user = get_user_by_ansible_id(self.token['sub'])
+        except ObjectDoesNotExist:
+            pass
 
         if not self.user:
             # Either the user wasn't cached or the requested user was not in the DB so we need to make a new one
@@ -134,6 +131,12 @@ class JWTCommonAuth:
                         username=self.token["user_data"]['username'],
                         defaults=user_defaults,
                     )
+
+                    resource = Resource.get_resource_for_object(self.user)
+
+                    resource.ansible_id = self.token['sub']
+                    resource.service_id = self.token['service_id']
+                    resource.save()
 
         setattr(self.user, "resource_api_actions", self.token.get("resource_api_actions", None))
 
@@ -159,8 +162,9 @@ class JWTCommonAuth:
                 setattr(self.user, attribute, new_value)
                 user_needs_save = True
         if user_needs_save:
-            logger.info(f"Saving user {self.user.username}")
-            self.user.save()
+            with no_reverse_sync():
+                logger.info(f"Saving user {self.user.username}")
+                self.user.save()
 
     def validate_token(self, unencrypted_token, decryption_key):
         validated_body = None
