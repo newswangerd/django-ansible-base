@@ -109,9 +109,7 @@ def get_orphan_resources(
     """QuerySet with orphaned managed resources to be deleted."""
     return Resource.objects.filter(
         content_type__resource_type__name=resource_type_name,
-    ).exclude(
-        ansible_id__in=[item.ansible_id for item in manifest_list]
-    )
+    ).exclude(ansible_id__in=[item.ansible_id for item in manifest_list])
 
 
 def delete_resource(resource: Resource):
@@ -317,7 +315,7 @@ class SyncExecutor:
             self.write(f"Deleting {self.deleted_count} orphaned resources")
             for orphan in resources_to_cleanup:
                 # Skip items that owned by this service, but are partially migrated
-                if orphan.service_id == service_id() and orphan.is_partially_migrated == True:
+                if orphan.service_id == service_id() and orphan.is_partially_migrated is True:
                     # TODO: how do I log skip?
                     continue
                 try:
