@@ -4,6 +4,7 @@ import pytest
 
 from ansible_base.lib.testing.util import StaticResourceAPIClient
 from ansible_base.lib.utils.response import get_relative_url
+from ansible_base.resource_registry.models import Resource
 from ansible_base.resource_registry.tasks.sync import ResourceSyncHTTPError, SyncExecutor
 
 
@@ -68,9 +69,15 @@ def test_delete_orphans(admin_api_client, static_api_client, stdout):
     response = admin_api_client.post(url, resource, format="json")
     assert response.status_code == 201
 
+    print(Resource.objects.filter(content_type__resource_type__name="shared.user").values_list("name"))
+
     # The previously created user must now be deleted
-    executor = SyncExecutor(api_client=static_api_client, stdout=stdout, retain_seconds=0)
+    executor = SyncExecutor(api_client=static_api_client, stdout=stdout)
     executor.run()
+
+    print(Resource.objects.filter(content_type__resource_type__name="shared.user").values_list("name"))
+
+    print(stdout.lines)
     assert 'Deleting 1 orphaned resources' in stdout.lines
     assert any('Deleted 1' in line for line in stdout.lines)
 
@@ -94,7 +101,7 @@ def test_update_existing_resource(admin_api_client, static_api_client, stdout):
     assert response.status_code == 201
 
     # The previously created user must now be updated
-    executor = SyncExecutor(api_client=static_api_client, stdout=stdout, retain_seconds=0)
+    executor = SyncExecutor(api_client=static_api_client, stdout=stdout)
     executor.run()
     assert 'UPDATED 97447387-8596-404f-b0d0-6429b04c8d22 theceo' in stdout.lines
     assert any('Updated 1' in line for line in stdout.lines)
@@ -114,7 +121,7 @@ def test_noop_existing_resource(admin_api_client, static_api_client, stdout):
     assert response.status_code == 201
 
     # The previously created user must be skipped
-    executor = SyncExecutor(api_client=static_api_client, stdout=stdout, retain_seconds=0)
+    executor = SyncExecutor(api_client=static_api_client, stdout=stdout)
     executor.run()
     assert len(executor.results["noop"]) == 1
     assert 'NOOP 97447387-8596-404f-b0d0-6429b04c8d22' in stdout.lines
