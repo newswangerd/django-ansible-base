@@ -2,6 +2,7 @@ from __future__ import annotations  # support python<3.10
 
 import asyncio
 import csv
+import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -12,7 +13,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
-from django.db.utils import DatabaseError, IntegrityError
+from django.db.utils import Error, IntegrityError
 from requests import HTTPError
 
 from ansible_base.resource_registry.models import Resource, ResourceType
@@ -20,12 +21,14 @@ from ansible_base.resource_registry.models.service_identifier import service_id
 from ansible_base.resource_registry.registry import get_registry
 from ansible_base.resource_registry.rest_client import ResourceAPIClient, get_resource_server_client
 
+logger = logging.getLogger('ansible_base.resources_api.tasks.sync')
+
 
 class ManifestNotFound(HTTPError):
     """Raise when server returns 404 for a manifest"""
 
 
-class ResourceDeletionError(DatabaseError):
+class ResourceDeletionError(Error):
     """Raise for deletion errors on Django ORM"""
 
 
@@ -39,6 +42,7 @@ class SyncStatus(str, Enum):
     NOOP = "noop"
     CONFLICT = "conflict"
     UNAVAILABLE = "unavailable"
+    ERROR = "error"
 
 
 @dataclass
@@ -125,7 +129,8 @@ def delete_resource(resource: Resource):
     """
     try:
         return resource.delete_resource()
-    except DatabaseError as exc:  # pragma: no cover
+    except Error as exc:  # pragma: no cover
+        logger.error(f"Failed to delete resource {resource.ansible_id}. Received error: {exc}")
         raise ResourceDeletionError() from exc
 
 
@@ -154,6 +159,9 @@ def _attempt_update_resource(
         resource.update_resource(resource_data, partial=True, **kwargs)
     except IntegrityError:  # pragma: no cover
         return SyncResult(SyncStatus.CONFLICT, manifest_item)
+    except Error as e:
+        logger.error(f"Failed to update resource {resource.ansible_id}. Received error: {e}")
+        return SyncResult(SyncStatus.ERROR, ManifestItem)
     else:
         return SyncResult(SyncStatus.UPDATED, manifest_item)
 
@@ -219,6 +227,9 @@ def resource_sync(
             )
         except IntegrityError:
             return SyncResult(SyncStatus.CONFLICT, manifest_item)
+        except Error as e:
+            logger.error(f"Failed to update create {manifest_item.ansible_id}. Received error: {e}")
+            return SyncResult(SyncStatus.ERROR, manifest_item)
         else:
             return SyncResult(SyncStatus.CREATED, manifest_item)
 
@@ -260,7 +271,7 @@ class SyncExecutor:
 
     def _report_results(self, results: list[SyncResult]):
         """Grouped results report at the end of the execution."""
-        created_count = updated_count = conflicted_count = skipped_count = 0
+        created_count = updated_count = conflicted_count = skipped_count = error_count = 0
         for status, manifest_item in results:
             self.results[status.value].append(manifest_item)
             self.unavailable.discard(manifest_item)
@@ -275,6 +286,8 @@ class SyncExecutor:
                 conflicted_count += 1
             elif status == SyncStatus.NOOP:
                 skipped_count += 1
+            elif status == SyncStatus.ERROR:
+                error_count += 1
             else:  # pragma: no cover
                 raise TypeError("Unhandled SyncResult")
 
@@ -286,6 +299,7 @@ class SyncExecutor:
             f"Unavailable {len(self.unavailable)} | "
             f"Skipped {skipped_count} | "
             f"Deleted {self.deleted_count}"
+            f"Errors {error_count}"
         )
 
     async def _a_process_manifest_item(self, manifest_item):  # pragma: no cover
