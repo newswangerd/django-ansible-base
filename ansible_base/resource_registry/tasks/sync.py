@@ -161,7 +161,7 @@ def _attempt_update_resource(
         return SyncResult(SyncStatus.CONFLICT, manifest_item)
     except Error as e:
         logger.error(f"Failed to update resource {resource.ansible_id}. Received error: {e}")
-        return SyncResult(SyncStatus.ERROR, ManifestItem)
+        return SyncResult(SyncStatus.ERROR, manifest_item)
     else:
         return SyncResult(SyncStatus.UPDATED, manifest_item)
 
@@ -298,7 +298,7 @@ class SyncExecutor:
             f"Conflict {conflicted_count} | "
             f"Unavailable {len(self.unavailable)} | "
             f"Skipped {skipped_count} | "
-            f"Deleted {self.deleted_count}"
+            f"Deleted {self.deleted_count} | "
             f"Errors {error_count}"
         )
 
