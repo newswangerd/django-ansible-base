@@ -102,7 +102,7 @@ class JWTCommonAuth:
             self.token = self.validate_token(token_from_header, cert_object.key)
 
         # Let's see if we have the same user info in the cache already
-        is_cached, user_defaults = self.cache.check_user_in_cache(self.token)
+        user_defaults = self.cache.check_user_in_cache(self.token)[1]
 
         self.user = None
         try:
@@ -156,6 +156,12 @@ class JWTCommonAuth:
             old_value = getattr(self.user, attribute, None)
             new_value = self.token.get('user_data', {}).get(attribute, None)
             if old_value != new_value:
+                if attribute == "username" and get_user_model().objects.filter(username=new_value).exists():
+                    logger.warning(
+                        f"Renaming user {old_value} to {new_value} would result in a duplicate key error. "
+                        "Please make sure the sync task is running to prevent this warning in the future."
+                    )
+                    continue
                 if attribute == 'is_superuser' and new_value is False:
                     continue
                 logger.debug(f"Changing {attribute} for {self.user.username} from {old_value} to {new_value}")
@@ -164,6 +170,7 @@ class JWTCommonAuth:
         if user_needs_save:
             with no_reverse_sync():
                 logger.info(f"Saving user {self.user.username}")
+
                 self.user.save()
 
     def validate_token(self, unencrypted_token, decryption_key):
