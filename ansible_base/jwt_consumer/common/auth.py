@@ -137,7 +137,7 @@ class JWTCommonAuth:
 
                     resource.ansible_id = self.token['sub']
                     resource.service_id = self.token['service_id']
-                    resource.save()
+                    resource.save(update_fields=['ansible_id', 'service_id'])
 
         setattr(self.user, "resource_api_actions", self.token.get("resource_api_actions", None))
 
@@ -171,7 +171,6 @@ class JWTCommonAuth:
         if user_needs_save:
             with no_reverse_sync():
                 logger.info(f"Saving user {self.user.username}")
-
                 self.user.save()
 
     def validate_token(self, unencrypted_token, decryption_key):
