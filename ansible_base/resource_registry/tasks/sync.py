@@ -92,7 +92,7 @@ def fetch_manifest(
     resp_metadata = api_client.get_service_metadata()
     resp_metadata.raise_for_status()
 
-    manifest_stream = api_client.get_resource_type_manifest(resource_type_name, filters={"service_id": str(service_id())})
+    manifest_stream = api_client.get_resource_type_manifest(resource_type_name, filters={"service_id": service_id()})
     if manifest_stream.status_code == 404:
         msg = f"manifest for {resource_type_name} NOT FOUND."
         raise ManifestNotFound(msg)
@@ -335,9 +335,6 @@ class SyncExecutor:
         if self.deleted_count:
             self.write(f"Deleting {self.deleted_count} orphaned resources")
             for orphan in resources_to_cleanup:
-                # Skip items that owned by this service, but are partially migrated
-                # if orphan.service_id == service_id() and orphan.is_partially_migrated is True:
-                #     continue
                 try:
                     _sc = orphan.content_type.resource_type.serializer_class
                     data = _sc(orphan.content_object).data

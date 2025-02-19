@@ -65,7 +65,7 @@ class Command(BaseCommand):  # pragma: no cover
 
     def handle(self, *args, **options):
         """Handle RESOURCE_PROVIDER sync"""
-        arguments = ["resource_type_names", "retries", "retrysleep", "retain_seconds", "asyncio"]
+        arguments = ["resource_type_names", "retries", "retrysleep", "asyncio"]
         options = {k: v for k, v in options.items() if k in arguments}
         try:
             executor = SyncExecutor(**options, stdout=self.stdout)

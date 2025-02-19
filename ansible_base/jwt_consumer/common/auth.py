@@ -102,6 +102,7 @@ class JWTCommonAuth:
             self.token = self.validate_token(token_from_header, cert_object.key)
 
         # Let's see if we have the same user info in the cache already
+        # Note: we're not using the "_, user_defaults=" trick here because _ is used for our translation function.
         user_defaults = self.cache.check_user_in_cache(self.token)[1]
 
         self.user = None
