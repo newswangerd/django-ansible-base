@@ -1,6 +1,7 @@
 import logging
 
 from django.contrib.contenttypes.models import ContentType
+from django.db.models.query import IntegrityError
 
 from ansible_base.jwt_consumer.common.auth import JWTAuthentication
 from ansible_base.jwt_consumer.common.exceptions import InvalidService
@@ -47,7 +48,11 @@ class HubJWTAuth(JWTAuthentication):
                     try:
                         team = Resource.objects.get(ansible_id=ansible_id).content_object
                     except Resource.DoesNotExist:
-                        team = self.common_auth.get_or_create_resource('team', team_data)[1]
+                        try:
+                            team = self.common_auth.get_or_create_resource('team', team_data)[1]
+                        except IntegrityError:
+                            logger.warning(f"Got integrity error on {team_data}. Skipping team assignment.")
+                            continue
 
                     if role_name == 'Team Admin':
                         admin_teams.append(team)
