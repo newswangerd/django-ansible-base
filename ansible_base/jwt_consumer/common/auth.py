@@ -296,7 +296,12 @@ class JWTCommonAuth:
 
             for index in object_indexes:
                 object_data = self.token['objects'][object_type][index]
-                resource, obj = self.get_or_create_resource(object_type, object_data)
+                try:
+                    resource, obj = self.get_or_create_resource(object_type, object_data)
+                except IntegrityError:
+                    logger.warning(f"Got integrity error on {object_data}. Skipping {object_type} assignment.")
+                    continue
+
                 if resource is not None:
                     assignment = rd.give_permission(self.user, obj)
                     role_diff = role_diff.exclude(pk=assignment.pk)
