@@ -4,6 +4,7 @@ from typing import Union
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction
 from django.utils.translation import gettext_lazy as _
 from rest_framework.serializers import ValidationError
@@ -40,6 +41,21 @@ class ResourceType(models.Model):
     def get_resource_config(self):
         return self.resource_registry.get_config_for_model(model=ContentType.objects.get_for_id(self.content_type_id).model_class())
 
+    def get_conflicting_resource(self, resource_data):
+        filter = {}
+
+        serialized_data = self.serializer_class(data=resource_data)
+        serialized_data.is_valid(raise_exception=True)
+        serialized_data = serialized_data.validated_data
+
+        for field in self.serializer_class.UNIQUE_FIELDS:
+            filter[field] = serialized_data[field]
+
+        try:
+            return Resource.get_resource_for_object(self.content_type.get_object_for_this_type(**filter))
+        except ObjectDoesNotExist:
+            return None
+
 
 class Resource(models.Model):
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, related_name="resources", help_text=_("The content type for this resource."))
@@ -72,6 +88,10 @@ class Resource(models.Model):
     @property
     def resource_type(self):
         return resource_type_cache(self.content_type.pk).name
+
+    @property
+    def resource_type_obj(self):
+        return resource_type_cache(self.content_type.pk)
 
     class Meta:
         unique_together = ('content_type', 'object_id')
