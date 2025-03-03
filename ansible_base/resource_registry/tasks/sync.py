@@ -214,7 +214,7 @@ def _attempt_update_resource(
 def _attempt_create_resource(
     manifest_item: ManifestItem,
     resource_data: dict,
-    resource_type: str,
+    resource_type: ResourceType,
     resource_service_id: str,
     api_client: ResourceAPIClient,
 ) -> SyncResult:
