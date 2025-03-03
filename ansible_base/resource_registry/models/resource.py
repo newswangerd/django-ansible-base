@@ -50,7 +50,7 @@ class ResourceType(models.Model):
         qfilter = {}
 
         if not self.can_be_managed:
-            raise Exception(f"Resource type {self.name} does not have a managed serializer.")
+            raise UnamangedResourceException(f"Resource type {self.name} does not have a managed serializer.")
 
         serializer = self.serializer_class(data=resource_data)
         serializer.is_valid(raise_exception=True)

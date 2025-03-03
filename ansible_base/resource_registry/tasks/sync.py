@@ -11,6 +11,7 @@ from io import StringIO, TextIOBase
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import QuerySet
 from django.db.utils import Error, IntegrityError
@@ -199,13 +200,13 @@ def _attempt_update_resource(
         try:
             _handle_conflict(resource_data, resource.resource_type_obj, api_client)
             resource.update_resource(resource_data, partial=True, **kwargs)
-        except (ResourceDeletionError, IntegrityError, Error) as e:
+        except (ResourceDeletionError, IntegrityError, Error, ValidationError) as e:
             logger.error(f"Failed to gracefully handle conflict for {resource_data}. Got error {e}.")
             return SyncResult(SyncStatus.CONFLICT, manifest_item)
-    except Error as e:
+    except (Error, ValidationError) as e:
         # Something happened with the database. We don't know what it is. Instead of failing the whole
         # sync, we'll raise an error and skip this for now.
-        logger.error(f"Failed to update resource {resource.ansible_id}. Received error: {e}. Will try again on the nest sync")
+        logger.error(f"Failed to update resource {resource.ansible_id}. Received error: {e}. Will try again on the next sync.")
         return SyncResult(SyncStatus.ERROR, manifest_item)
 
     return SyncResult(SyncStatus.UPDATED, manifest_item)
@@ -237,13 +238,13 @@ def _attempt_create_resource(
                 ansible_id=manifest_item.ansible_id,
                 service_id=resource_service_id,
             )
-        except (ResourceDeletionError, IntegrityError, Error) as e:
+        except (ResourceDeletionError, IntegrityError, Error, ValidationError) as e:
             logger.error(f"Failed to gracefully handle conflict for {resource_data}. Got error {e}.")
             return SyncResult(SyncStatus.CONFLICT, manifest_item)
-    except Error as e:
+    except (Error, ValidationError) as e:
         # Something happened with the database. We don't know what it is. Instead of failing the whole
         # sync, we'll raise an error and skip this for now.
-        logger.error(f"Failed to create {manifest_item.ansible_id}. Received error: {e}. Will try again on the nest sync")
+        logger.error(f"Failed to create {manifest_item.ansible_id}. Received error: {e}. Will try again on the next sync.")
         return SyncResult(SyncStatus.ERROR, manifest_item)
 
     return SyncResult(SyncStatus.CREATED, manifest_item)
