@@ -147,7 +147,7 @@ def test_resource_sync_update_conflict(static_api_client, stdout, resource_to_up
     resource.content_object.username = "different"
     resource.content_object.save()
 
-    new_id = str(uuid4())
+    new_id = "b19ff84f-df6a-462a-ac81-167b1dc8f933"  # from fixtures/status/resources/{id}
 
     url = get_relative_url("resource-list")
     resource = {
@@ -165,7 +165,7 @@ def test_resource_sync_update_conflict(static_api_client, stdout, resource_to_up
     response = admin_api_client.post(url, resource, format="json")
     assert response.status_code == 201
 
-    assert Resource.objects.filter(ansible_id=new_id).exists()
+    assert Resource.objects.get(ansible_id=new_id).name == "theceo"
 
     executor = SyncExecutor(api_client=static_api_client, stdout=stdout)
     executor.run()
@@ -175,7 +175,7 @@ def test_resource_sync_update_conflict(static_api_client, stdout, resource_to_up
     assert 'UPDATED 97447387-8596-404f-b0d0-6429b04c8d22 theceo' in stdout.lines
     assert any('Updated 1' in line for line in stdout.lines)
 
-    assert not Resource.objects.filter(ansible_id=new_id).exists()
+    assert Resource.objects.get(ansible_id=new_id).name == "was_renamed"
 
 
 @pytest.mark.django_db

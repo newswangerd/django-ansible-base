@@ -50,8 +50,11 @@ class HubJWTAuth(JWTAuthentication):
                     except Resource.DoesNotExist:
                         try:
                             team = self.common_auth.get_or_create_resource('team', team_data)[1]
-                        except IntegrityError:
-                            logger.warning(f"Got integrity error on {team_data}. Skipping team assignment.")
+                        except IntegrityError as e:
+                            logger.warning(
+                                f"Got integrity error ({e}) on {team_data}. Skipping team assignment. "
+                                "Please make sure the sync task is running to prevent this warning in the future."
+                            )
                             continue
 
                     if role_name == 'Team Admin':

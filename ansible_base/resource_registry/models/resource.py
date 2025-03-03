@@ -17,6 +17,10 @@ def resource_type_cache(content_type_id):
     return ContentType.objects.get_for_id(content_type_id).resource_type
 
 
+class UnamangedResourceException(Exception):
+    pass
+
+
 class ResourceType(models.Model):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -32,6 +36,7 @@ class ResourceType(models.Model):
 
     @property
     def serializer_class(self):
+
         return self.get_resource_config().managed_serializer
 
     @property
@@ -42,17 +47,20 @@ class ResourceType(models.Model):
         return self.resource_registry.get_config_for_model(model=ContentType.objects.get_for_id(self.content_type_id).model_class())
 
     def get_conflicting_resource(self, resource_data):
-        filter = {}
+        qfilter = {}
 
-        serialized_data = self.serializer_class(data=resource_data)
-        serialized_data.is_valid(raise_exception=True)
-        serialized_data = serialized_data.validated_data
+        if not self.can_be_managed:
+            raise Exception(f"Resource type {self.name} does not have a managed serializer.")
+
+        serializer = self.serializer_class(data=resource_data)
+        serializer.is_valid(raise_exception=True)
+        serialized_data = serializer.validated_data
 
         for field in self.serializer_class.UNIQUE_FIELDS:
-            filter[field] = serialized_data[field]
+            qfilter[field] = serialized_data[field]
 
         try:
-            return Resource.get_resource_for_object(self.content_type.get_object_for_this_type(**filter))
+            return Resource.get_resource_for_object(self.content_type.get_object_for_this_type(**qfilter))
         except ObjectDoesNotExist:
             return None
 

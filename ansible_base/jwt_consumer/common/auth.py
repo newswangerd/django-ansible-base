@@ -298,8 +298,11 @@ class JWTCommonAuth:
                 object_data = self.token['objects'][object_type][index]
                 try:
                     resource, obj = self.get_or_create_resource(object_type, object_data)
-                except IntegrityError:
-                    logger.warning(f"Got integrity error on {object_data}. Skipping {object_type} assignment.")
+                except IntegrityError as e:
+                    logger.warning(
+                        f"Got integrity error ({e}) on {object_data}. Skipping {object_type} assignment. "
+                        "Please make sure the sync task is running to prevent this warning in the future."
+                    )
                     continue
 
                 if resource is not None:

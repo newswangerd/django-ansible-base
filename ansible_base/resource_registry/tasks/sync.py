@@ -179,7 +179,7 @@ def _handle_conflict(resource_data: dict, resource_type: ResourceType, api_clien
             resource_data=data["resource_data"], service_id=data["service_id"], is_partially_migrated=data["is_partially_migrated"]
         )
     else:
-        raise ResourceSyncHTTPError
+        raise ResourceSyncHTTPError(f"Received a bad error code from the resource server: {resp.status_code}")
 
 
 def _attempt_update_resource(
@@ -199,13 +199,13 @@ def _attempt_update_resource(
         try:
             _handle_conflict(resource_data, resource.resource_type_obj, api_client)
             resource.update_resource(resource_data, partial=True, **kwargs)
-        except (ResourceDeletionError, IntegrityError) as e:
+        except (ResourceDeletionError, IntegrityError, Error) as e:
             logger.error(f"Failed to gracefully handle conflict for {resource_data}. Got error {e}.")
             return SyncResult(SyncStatus.CONFLICT, manifest_item)
     except Error as e:
         # Something happened with the database. We don't know what it is. Instead of failing the whole
         # sync, we'll raise an error and skip this for now.
-        logger.error(f"Failed to update resource {resource.ansible_id}. Received error: {e}")
+        logger.error(f"Failed to update resource {resource.ansible_id}. Received error: {e}. Will try again on the nest sync")
         return SyncResult(SyncStatus.ERROR, manifest_item)
 
     return SyncResult(SyncStatus.UPDATED, manifest_item)
@@ -237,13 +237,13 @@ def _attempt_create_resource(
                 ansible_id=manifest_item.ansible_id,
                 service_id=resource_service_id,
             )
-        except (ResourceDeletionError, IntegrityError) as e:
+        except (ResourceDeletionError, IntegrityError, Error) as e:
             logger.error(f"Failed to gracefully handle conflict for {resource_data}. Got error {e}.")
             return SyncResult(SyncStatus.CONFLICT, manifest_item)
     except Error as e:
         # Something happened with the database. We don't know what it is. Instead of failing the whole
         # sync, we'll raise an error and skip this for now.
-        logger.error(f"Failed to update create {manifest_item.ansible_id}. Received error: {e}")
+        logger.error(f"Failed to create {manifest_item.ansible_id}. Received error: {e}. Will try again on the nest sync")
         return SyncResult(SyncStatus.ERROR, manifest_item)
 
     return SyncResult(SyncStatus.CREATED, manifest_item)
@@ -303,11 +303,11 @@ def resource_sync(
         manifest_item.resource_data = resource_data
         resource_type = ResourceType.objects.get(name=resource_type_name)
         return _attempt_create_resource(
-            manifest_item,
-            resource_data,
-            resource_type,
-            resource_service_id,
-            api_client,
+            manifest_item=manifest_item,
+            resource_data=resource_data,
+            resource_type=resource_type,
+            resource_service_id=resource_service_id,
+            api_client=api_client,
         )
 
 
